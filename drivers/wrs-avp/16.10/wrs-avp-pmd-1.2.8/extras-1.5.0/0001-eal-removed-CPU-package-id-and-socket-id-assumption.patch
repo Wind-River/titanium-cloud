@@ -1,0 +1,42 @@
+From 43d64ec1d3f3f1b39aa301aabf6a5af00d6ebdd7 Mon Sep 17 00:00:00 2001
+From: Allain Legacy <allain.legacy@windriver.com>
+Date: Tue, 24 Jun 2014 18:57:24 -0400
+Subject: [PATCH] eal: removed CPU package id and socket id assumption
+
+The EAL layer assumes that it is safe to use the physical package id
+as the socket id when the /sys/devices/system/cpuX/nodeY sysfs file
+does not exist.  Unfortunately, this assumption does not hold true in
+all situations and in fact makes matters worse in systems that publish
+a non-zero package id when no non-zero NUMA node exists.
+---
+ lib/librte_eal/linuxapp/eal/eal_lcore.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/lib/librte_eal/linuxapp/eal/eal_lcore.c b/lib/librte_eal/linuxapp/eal/eal_lcore.c
+index 097849e..aed582f 100644
+--- a/lib/librte_eal/linuxapp/eal/eal_lcore.c
++++ b/lib/librte_eal/linuxapp/eal/eal_lcore.c
+@@ -99,6 +99,7 @@ cpu_socket_id(unsigned lcore_id)
+ 	}
+ 	closedir(d);
+ 	if (endptr == NULL || *endptr!='\0' || endptr == e->d_name+prefix_len) {
++#ifdef CONFIG_RTE_EAL_ALLOW_CPU_PKGID_AS_SOCKET_ID
+ 		RTE_LOG(WARNING, EAL, "Cannot read numa node link "
+ 				"for lcore %u - using physical package id instead\n",
+ 				lcore_id);
+@@ -109,6 +110,12 @@ cpu_socket_id(unsigned lcore_id)
+ 			goto err;
+ 		if (eal_parse_sysfs_value(path, &id) != 0)
+ 			goto err;
++#else
++    /* don't fall back to package id since that causes more problems on
++     * systems that actually do not have multiple numa nodes.
++     */
++    goto err;
++#endif
+ 	}
+ 	return (unsigned)id;
+ 
+-- 
+1.9.1
+

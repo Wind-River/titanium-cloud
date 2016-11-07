@@ -1,0 +1,183 @@
+#! /bin/sh
+#
+#   Copyright(c) 2013-2016, Wind River Systems, Inc. 
+#
+#   Redistribution and use in source and binary forms, with or without
+#   modification, are permitted provided that the following conditions
+#   are met:
+#
+#     * Redistributions of source code must retain the above copyright
+#       notice, this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in
+#       the documentation and/or other materials provided with the
+#       distribution.
+#     * Neither the name of Wind River Systems nor the names of its
+#       contributors may be used to endorse or promote products derived
+#       from this software without specific prior written permission.
+#
+#   THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+#   "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+#   LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+#   A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+#   OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+#   SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+#   LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+#   DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+#   THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+#   (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+#   OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#
+
+#
+# chkconfig: - 96 96
+#
+### BEGIN INIT INFO
+# Short-Description: Guest-Client
+# Provides: guest-client
+# Default-Start: 3 5
+# Default-Stop: 0 1 2 6
+# Required-Start:
+# Required-Stop:
+### END INIT INFO
+
+# Assumes that LSB (Linux Standard Base) scripts are available.  On Fedora and
+# other Red Hat related distros, the redhat-lsb package is optional.
+if [ -f /etc/init.d/functions ]
+then
+    . /etc/init.d/functions
+else
+    . /lib/lsb/init-functions
+fi
+
+# LSB Exit Codes
+#   0 - success
+#   1 - generic or unspecified error
+#   2 - invalid or excess arguments
+#   3 - unimplemented feature
+#   4 - user had insufficient privileges
+#   5 - program is not installed
+#   6 - program is not configured
+#   7 - program is not running
+#
+# LSB Exit Status Codes
+#   0 - program is running or service OK
+#   1 - program is dead and /var/run pid file exists
+#   2 - program is dead and /var/lock lock file exists
+#   3 - program is not running
+#   4 - program or service status is unknown
+#
+RETVAL=0
+
+# Update binary location and device to be used, if necessary.
+GUEST_CLIENT_NAME="guest-client"
+GUEST_CLIENT_PIDFILE="/var/run/${GUEST_CLIENT_NAME}.pid"
+GUEST_CLIENT="/usr/bin/${GUEST_CLIENT_NAME}"
+GUEST_CLIENT_DEVICE="/dev/virtio-ports/cgcs.heartbeat"
+
+if [ ! -e "${GUEST_CLIENT}" ]
+then
+    echo "${GUEST_CLIENT} is missing"
+    exit 5
+fi
+
+PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/bin
+
+case "$1" in
+    start)
+        args=""
+        if [ -n ${GUEST_CLIENT_DEVICE} ]
+        then
+            args="--device ${GUEST_CLIENT_DEVICE}"
+        fi
+
+        echo -n "Starting ${GUEST_CLIENT_NAME}: "
+        if [ -n "`pidof ${GUEST_CLIENT}`" ]
+        then
+           # Something might have started guest-client already.
+           RETVAL=0
+        else
+           start-stop-daemon --start --background --make-pidfile --pidfile ${GUEST_CLIENT_PIDFILE} --exec ${GUEST_CLIENT} -- ${args}
+           RETVAL=$?
+        fi
+        if [ ${RETVAL} -eq 0 ]
+        then
+           echo "OK"
+        else
+           echo "FAIL"
+           RETVAL=1
+        fi
+        ;;
+
+    stop)
+        echo -n "Stopping ${GUEST_CLIENT_NAME}: "
+        if [ -n "`pidof ${GUEST_CLIENT}`" ]
+        then
+           killproc ${GUEST_CLIENT}
+        fi
+
+        SHUTDOWN_TIMEOUT=10
+        count=0
+        while [ ${count} -lt ${SHUTDOWN_TIMEOUT} ]
+        do
+           pidof ${GUEST_CLIENT} &> /dev/null
+           rc=$?
+           if [ ${rc} -eq 1 ]
+           then
+              echo "OK"
+              break
+           fi
+           count=`expr ${count} + 1`
+           sleep 1
+        done
+
+        pidof ${GUEST_CLIENT} &> /dev/null
+        rc=$?
+        if [ ${rc} -eq 0 ]
+        then
+           echo "FAIL"
+           RETVAL=1
+        fi
+
+        rm -f ${GUEST_CLIENT_PIDFILE}
+        ;;
+
+    status)
+        pid=`cat ${GUEST_CLIENT_PIDFILE} 2>/dev/null`
+        if [ -n "${pid}" ]
+        then
+           if ps -p ${pid} &>/dev/null
+           then
+              echo "${GUEST_CLIENT_NAME} is running"
+              RETVAL=0
+           else
+              echo "${GUEST_CLIENT_NAME} is not running but has pid file"
+              RETVAL=1
+           fi
+        else
+           echo "${GUEST_CLIENT_NAME} is not running"
+           RETVAL=3
+        fi
+        ;;
+
+    restart)
+        $0 stop
+        sleep 1
+        $0 start
+        ;;
+
+    reload)
+        pid=`cat ${GUEST_CLIENT_PIDFILE} 2>/dev/null`
+        if [ -n "${pid}" ]
+        then
+           echo "${GUEST_CLIENT_NAME} reload"
+           kill -HUP ${pid}
+        fi
+        ;;
+
+    *)
+        echo "usage: $0 { start | stop | status | restart | reload }"
+        ;;
+esac
+
+exit ${RETVAL}

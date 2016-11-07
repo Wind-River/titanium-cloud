@@ -1,0 +1,23 @@
+#
+# Configuration options for WRS PMD and driver extensions
+#
+
+#
+# Compile WRS supplemental libraries
+#
+CONFIG_WRS_LIBS=y
+
+#
+# Compile architecture specific WRS extensions
+#
+CONFIG_WRS_LIBWRS_EAL=y
+
+#
+# Compile WRS accelerated virtual port (AVP) guest PMD driver
+#
+CONFIG_WRS_LIBWRS_AVP_PMD=y
+CONFIG_WRS_LIBWRS_AVP_DEBUG_RX=n
+CONFIG_WRS_LIBWRS_AVP_DEBUG_TX=n
+CONFIG_WRS_LIBWRS_AVP_DEBUG_DRIVER=y
+CONFIG_WRS_LIBWRS_AVP_DEBUG_BUFFERS=n
+CONFIG_WRS_LIBWRS_AVP_STATS=y

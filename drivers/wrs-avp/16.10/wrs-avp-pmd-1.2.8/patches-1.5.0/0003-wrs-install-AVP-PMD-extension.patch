@@ -1,0 +1,85 @@
+From da59c9583a0dbaad2b47a56bd51f6b5799262ed0 Mon Sep 17 00:00:00 2001
+From: Allain Legacy <allain.legacy@windriver.com>
+Date: Tue, 12 Aug 2014 19:57:12 -0400
+Subject: [PATCH 3/3] wrs: install AVP PMD extension
+
+Signed-off-by: Allain Legacy <allain.legacy@windriver.com>
+---
+ Makefile                                     | 2 +-
+ app/test-pmd/testpmd.c                       | 8 ++++++++
+ config/defconfig_x86_64-default-linuxapp-gcc | 5 +++++
+ mk/rte.app.mk                                | 4 ++++
+ 4 files changed, 18 insertions(+), 1 deletion(-)
+
+diff --git a/Makefile b/Makefile
+index 3d68af8..fc6a7d9 100644
+--- a/Makefile
++++ b/Makefile
+@@ -40,6 +40,6 @@ export RTE_SDK
+ # directory list
+ #
+ 
+-ROOTDIRS-y := scripts lib app
++ROOTDIRS-y := scripts lib wrs app
+ 
+ include $(RTE_SDK)/mk/rte.sdkroot.mk
+diff --git a/app/test-pmd/testpmd.c b/app/test-pmd/testpmd.c
+index 0ca0e33..4cc88ad 100644
+--- a/app/test-pmd/testpmd.c
++++ b/app/test-pmd/testpmd.c
+@@ -1678,6 +1678,9 @@ init_port_dcb_config(portid_t pid,struct dcb_config *dcb_conf)
+ #ifdef RTE_EXEC_ENV_BAREMETAL
+ #define main _main
+ #endif
++#ifdef WRS_LIBWRS_AVP_PMD
++#include <avp_ethdev.h>
++#endif
+ 
+ int
+ main(int argc, char** argv)
+@@ -1692,6 +1695,11 @@ main(int argc, char** argv)
+ 	if (rte_pmd_init_all())
+ 		rte_panic("Cannot init PMD\n");
+ 
++#ifdef WRS_LIBWRS_AVP_PMD
++	if (wrs_avp_pmd_init())
++		rte_panic("Cannot init WRS AVP PMD\n");
++#endif
++
+ 	if (rte_eal_pci_probe())
+ 		rte_panic("Cannot probe PCI\n");
+ 
+diff --git a/config/defconfig_x86_64-default-linuxapp-gcc b/config/defconfig_x86_64-default-linuxapp-gcc
+index c70a478..626774f 100644
+--- a/config/defconfig_x86_64-default-linuxapp-gcc
++++ b/config/defconfig_x86_64-default-linuxapp-gcc
+@@ -31,6 +31,11 @@
+ #
+ 
+ #
++# Add WRS extensions
++#
++#include "../wrs/config/config_x86_64-wrs-linuxapp-gcc"
++
++#
+ # define executive environment
+ #
+ # CONFIG_RTE_EXEC_ENV can be linuxapp, baremetal
+diff --git a/mk/rte.app.mk b/mk/rte.app.mk
+index 728e5b5..799e015 100644
+--- a/mk/rte.app.mk
++++ b/mk/rte.app.mk
+@@ -72,6 +72,10 @@ ifeq ($(CONFIG_RTE_LIBRTE_IXGBE_PMD),y)
+ LDLIBS += -lrte_pmd_ixgbe
+ endif
+ 
++ifeq ($(CONFIG_WRS_LIBWRS_AVP_PMD),y)
++LDLIBS += -lwrs_pmd_avp
++endif
++
+ ifeq ($(CONFIG_RTE_LIBRTE_VIRTIO_PMD),y)
+ LDLIBS += -lrte_pmd_virtio
+ endif
+-- 
+1.9.1
+

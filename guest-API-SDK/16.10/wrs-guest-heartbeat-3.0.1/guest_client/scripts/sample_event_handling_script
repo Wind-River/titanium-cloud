@@ -1,0 +1,165 @@
+#!/bin/sh
+#
+#   Copyright(c) 2013-2016, Wind River Systems, Inc. 
+#
+#   Redistribution and use in source and binary forms, with or without
+#   modification, are permitted provided that the following conditions
+#   are met:
+#
+#     * Redistributions of source code must retain the above copyright
+#       notice, this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in
+#       the documentation and/or other materials provided with the
+#       distribution.
+#     * Neither the name of Wind River Systems nor the names of its
+#       contributors may be used to endorse or promote products derived
+#       from this software without specific prior written permission.
+#
+#   THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+#   "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+#   LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+#   A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+#   OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+#   SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+#   LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+#   DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+#   THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+#   (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+#   OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#
+
+MSG_TYPE=$1
+EVENT=$2
+
+FILE="/tmp/event_timeout"
+if [ -f $FILE ];
+then
+   echo "File $FILE exists."
+   logger "File $FILE exists. Run slowly to trigger timeout"
+   sleep 300
+   logger "$FILE induced delay ends"
+else
+   logger "File $FILE does not exist."
+fi
+
+if [ "$MSG_TYPE" == "revocable" ]
+then
+   # Vote on the proposed action ( 0 == agree, 1 == reject )
+   # Take no actions yet.
+   # If no other parties have rejected the proposed action, an "irrevocable"
+   # notification will soon follow.
+
+   if [ $EVENT == "stop" ]
+   then
+      FILE="/tmp/vote_no_to_stop"
+
+   elif [ "$EVENT" == "reboot" ]
+   then
+      FILE="/tmp/vote_no_to_reboot"
+
+   elif [ "$EVENT" == "suspend" ] || [ "$EVENT" == "pause" ]
+   then
+      FILE="/tmp/vote_no_to_suspend"
+
+   elif [ "$EVENT" == "live_migrate_begin" ] || [ "$EVENT" == "cold_migrate_begin" ]
+   then
+      FILE="/tmp/vote_no_to_migrate"
+
+   elif [ "$EVENT" == "resize_begin" ]
+   then
+      FILE="/tmp/vote_no_to_resize"
+
+   elif [ "$EVENT" == "live_migrate_end" ] || [ "$EVENT" == "cold_migrate_end" ] ||
+        [ "$EVENT" == "resize_end" ] || [ "$EVENT" == "unpause" ] ||
+        [ "$EVENT" == "resume" ]
+   then
+      logger "Should never be asked to vote on $EVENT"
+      echo "Should never be asked to vote on $EVENT"
+      exit 1
+   fi
+
+   if [ -f $FILE ];
+   then
+      echo "File $FILE exists."
+      logger "File $FILE exists."
+      logger "Vote against $EVENT at this time."
+
+      # Vote no to shutdown.
+      exit 1
+   else
+      echo "File $FILE does not exist."
+      logger "File $FILE does not exists."
+      logger "Vote to allow $EVENT"
+
+      # Vote yes to shutdown.
+      exit 0
+   fi
+
+elif [ "$MSG_TYPE" == "irrevocable" ]
+then
+
+   if [ $EVENT == "stop" ]
+   then
+      logger "Notification of pending $EVENT received."
+      # Place clean shutdown actions here.  Idea is to hand off activity and
+      # cleanly stop the payload application. It is not required to stop the
+      # kernel, an ACPI power-off event will follow.
+
+   elif [ "$EVENT" == "reboot" ]
+   then
+      logger "Notification of pending $EVENT received."
+      # Place clean shutdown actions here.  Idea is to hand off activity and
+      # cleanly stop the application. It is not required to stop/reboot the
+      # kernel, an ACPI power-off event will follow, and then a power-on
+
+   elif [ "$EVENT" == "pause" ] || [ "$EVENT" == "suspend" ]
+   then
+      logger "Notification of pending $EVENT received."
+      # This VM will be paused or suspended but not rebooted.
+      # Hand off activity and cleanly stop the application if required.
+
+   elif [ "$EVENT" == "unpause" ] || [ "$EVENT" == "resume" ]
+   then
+      logger "Notification of $EVENT completion received."
+      # This VM has resumed from a paused or suspended state.
+      # Restart your application and take activity as required.
+
+   elif [ "$EVENT" == "resize_begin" ]
+   then
+      logger "Notification of pending resize received. ($EVENT)"
+      # This VM will soon be resized.
+      # Hand off activity and cleanly stop the payload application if required.
+
+   elif [ "$EVENT" == "resize_end" ]
+   then
+      logger "Notification of resize complete received."
+      # This VM has been resized.
+      # Restart your application and/or re-establish your network connectivity
+      # as required.
+
+   elif [ "$EVENT" == "live_migrate_begin" ] || [ "$EVENT" == "cold_migrate_begin" ]
+   then
+      logger "Notification of pending migration received. ($EVENT)"
+      # This VM will soon relocate to a different host.
+      # Network connectivity may change.
+      # Hand off activity and cleanly stop the payload application if required.
+
+   elif [ "$EVENT" == "live_migrate_end" ] || [ "$EVENT" == "cold_migrate_end" ]
+   then
+      logger "Notification of migration complete received."
+      # This VM has finished relocation to a new host.
+      # Network connectivity may have changed.
+      # Restart your application and/or re-establish your network connectivity
+      # as required.
+   fi
+
+   sleep 1
+   exit 0
+
+else
+   echo "Unknown message type '$MSG_TYPE'"
+   logger "Unknown message type '$MSG_TYPE'"
+   sleep 1
+   exit -1
+fi

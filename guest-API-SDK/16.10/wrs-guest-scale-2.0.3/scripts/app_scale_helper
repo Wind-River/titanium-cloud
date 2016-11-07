@@ -1,0 +1,105 @@
+#!/bin/bash
+#
+#   Copyright(c) 2013-2016, Wind River Systems, Inc. 
+#
+#   Redistribution and use in source and binary forms, with or without
+#   modification, are permitted provided that the following conditions
+#   are met:
+#
+#     * Redistributions of source code must retain the above copyright
+#       notice, this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in
+#       the documentation and/or other materials provided with the
+#       distribution.
+#     * Neither the name of Wind River Systems nor the names of its
+#       contributors may be used to endorse or promote products derived
+#       from this software without specific prior written permission.
+#
+#   THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+#   "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+#   LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+#   A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+#   OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+#   SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+#   LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+#   DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+#   THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+#   (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+#   OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#
+# This is a basic sample script showing what the script needs to be able to do.
+# The script can be edited as needed or replaced by a script or binary that
+# works in the same way, or can be deleted entirely if the default behaviour
+# of offlining the highest-numbered CPU is satisfactory and you don't care
+# about logging scaling events.
+#
+# We expect to be called in one of the following ways:
+#
+# "--cpu_add <cpu> <new cpu range>"
+#
+# This indicates that "cpu" has been set online, and we can now make use of it.
+# Do whatever is necessary to start using it, then return 0.
+#
+#
+# "--cpu_del"
+# In this case we pick an online cpu to offline, and do whatever we need to in
+# order to stop using it, and return the cpu number.  Note that CPU 0 must
+# always remain online.
+
+info_log()
+{
+    logger -p daemon.info -t $0 "$*"
+    echo $*
+}
+
+err_log()
+{
+    logger -p daemon.err -t $0 "$*"
+    echo $*
+}
+
+usage()
+{
+    err_log "usage: $0 {--cpu_del | --cpu_add <cpu> <new cpu range>}"
+    exit -1
+}
+
+cpu_scale_up ()
+{
+    CPU_NUM=$1
+    CPU_ONLINE_RANGE=$2
+    info_log "cpu add notification, cpu: ${CPU_NUM}"
+    info_log "cpu_online_range: ${CPU_ONLINE_RANGE}"
+}
+
+cpu_scale_down ()
+{
+    info_log "cpu del request"
+    
+    #pick the highest online cpu
+    CPUS_ONLINE=`cat /sys/devices/system/cpu/online`
+    CPU_NUM=${CPUS_ONLINE##*[,-]}
+    
+    info_log "selected cpu ${CPU_NUM} to offline"
+    return $CPU_NUM
+}
+
+if [ $# -lt 1 ]
+then
+    usage
+elif [ $1 = "--cpu_add" ]
+then
+    if [ $# = 3 ]
+    then
+        cpu_scale_up $2 $3
+    else
+        err_log "--cpu_add option called with $# args, expected 3"
+        usage
+    fi
+elif [ $1 = "--cpu_del" ]
+then
+    cpu_scale_down
+else
+    usage
+fi

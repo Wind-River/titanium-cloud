@@ -1,0 +1,105 @@
+GPL LICENSE SUMMARY
+
+   Copyright(c) 2010-2013 Intel Corporation. All rights reserved.
+   Copyright(c) 2013-2015 Wind River Systems, Inc. All rights reserved.
+
+   This program is free software; you can redistribute it and/or modify
+   it under the terms of version 2 of the GNU General Public License as
+   published by the Free Software Foundation.
+
+   This program is distributed in the hope that it will be useful, but
+   WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+   General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
+   The full GNU General Public License is included in this distribution
+   in the file called LICENSE.GPL.
+
+   Contact Information:
+   Intel Corporation
+-----------------------------------------------------------------------
+
+DESCRIPTION
+===========
+Titanium Server AVP virtual NIC is a shared memory based high performance
+networking device.  Its potential maximum throughput is higher than other
+standard virtual NIC devices (e.g., e1000, virtio).  This package provides the
+AVP Linux kernel device driver source.  It can be compiled against most recent
+Linux kernel distributions.
+
+
+REQUIREMENTS
+============
+    Compilation:
+        64-bit Linux Kernel
+           version >= 3.2
+           loadable module support
+           PCI device support
+        gcc compiler
+
+    VM Runtime:
+        AVP type virtual NIC
+
+DELIVERABLE
+===========
+Titanium Server AVP Linux kernel device driver is delivered as source with the
+required makefiles in a compressed tarball, such that it can be compiled for
+the applicable guest linux distribution as an external kernel module.
+
+
+COMPILE
+=======
+Extract the tarball contents ...
+
+   mkdir -p /tmp/wrs; cd /tmp/wrs
+   tar xvf wrs-avp-kmod-1.2.8.tgz
+   export WRS_SDK=${PWD}/wrs-avp-kmod-1.2.8
+
+To compile, change directories and run make.  This will produce 'wrs_avp.ko'.
+
+   unset RTE_SDK
+   make -C ${WRS_SDK}
+
+
+INSTALL
+=======
+To install the wrs_avp.ko kernel module that was just built the following
+command can be run from the same directory as the previous step.  This will
+install the kernel module to the default external module directory which is
+specific to your system.  Typically this is:
+
+   /lib/modules/`uname -r`/extra
+
+   sudo make -C ${WRS_SDK} modules_install
+   sudo depmod -a
+   sudo modprobe wrs_avp
+
+
+CONFIGURATION and USAGE
+=======================
+Loading the module with no parameters will allow the AVP kernel threads that
+are dedicated to receiving packets to be affined to all online CPUs.  If the
+list of candidate CPUs must be restricted then the kthread_cpulist module
+parameter can be used.
+
+   modprobe wrs_avp kthread_cpulist=0-2
+
+
+HARDWARE OFFLOAD FEATURES
+=======================
+The WRS AVP kernel module supports the following hardware offload features.
+Unless stated otherwise, all other offload capabilities are not supported and
+should not be specified.
+
+1.  VLAN insert and strip. 
+
+  This feature allows the guest and host to exchange VLAN tagging information
+  in packet metadata rather than modifying packet headers to add and remove
+  VLAN tagging information.  In many circumstances this capability reduces CPU
+  cost associated to processing VLAN tagged packets at both the guest and host
+  levels.  The ability to enable or disable this feature via ethtool is
+  currently not supported.  It is enabled by default when the host device
+  reports that it supports VLAN offload capabilities.
