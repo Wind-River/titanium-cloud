@@ -1,4 +1,6 @@
 # Titanium-Server
 
-Driver source code for the Wind River Titanium Server platform and SDK for guest API's.
+Network Driver source code and Guest API SDK Modules for the Wind River Titanium Server Platform.
+
+Updated with Titanium Server R3 / 16.10 Version of Network Drivers and Guest API SDK Modules.
 
