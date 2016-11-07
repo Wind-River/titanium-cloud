@@ -1,0 +1,108 @@
+#! /bin/bash
+#
+#   Copyright(c) 2013-2016, Wind River Systems, Inc. 
+#
+#   Redistribution and use in source and binary forms, with or without
+#   modification, are permitted provided that the following conditions
+#   are met:
+#
+#     * Redistributions of source code must retain the above copyright
+#       notice, this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in
+#       the documentation and/or other materials provided with the
+#       distribution.
+#     * Neither the name of Wind River Systems nor the names of its
+#       contributors may be used to endorse or promote products derived
+#       from this software without specific prior written permission.
+#
+#   THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+#   "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+#   LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+#   A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+#   OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+#   SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+#   LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+#   DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+#   THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+#   (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+#   OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#
+
+RETVAL=0
+
+CMD=$1
+INIT_TYPE=$2
+DESTDIR=$3
+
+# Note: the variable, DESTDIR has to be an absolute path.
+
+if [ -z ${INIT_TYPE} ]
+then
+    INIT_TYPE="sysv"
+fi
+
+if [ -z ${DESTDIR} ]
+then
+    DESTDIR="/"
+fi
+
+case "$CMD" in
+    install)
+        find ./rootdir/ -type d | while read source_dir; do
+            target_dir=${source_dir#./rootdir/}
+            mkdir -p $DESTDIR/$target_dir
+        done
+
+        cp --preserve=links -R ./rootdir/* $DESTDIR
+
+        if [ "$INIT_TYPE" = "systemd" ]
+        then
+            mkdir -p --mode 755 $DESTDIR/etc/guest-client/
+            cp guest-client.systemd $DESTDIR/etc/guest-client/
+            mkdir -p --mode 755 $DESTDIR/etc/systemd/system
+            cp guest-client.service $DESTDIR/lib/systemd/system/guest-client.service
+            ln -s $DESTDIR/lib/systemd/system/guest-client.service $DESTDIR/etc/systemd/system/guest-client.service
+
+        elif [ "$INIT_TYPE" = "sysv" ]
+        then
+            mkdir -p --mode 755 $DESTDIR/etc/init.d
+            cp guest-client.init $DESTDIR/etc/init.d/guest-client
+
+        else
+            echo "Unknown init-type given, INIT_TYPE=$INIT_TYPE"
+        fi
+        ;;
+
+    uninstall)
+        if [ "$INIT_TYPE" = "systemd" ]
+        then
+            rm $DESTDIR/etc/guest-client/guest-client.systemd
+            rm $DESTDIR/lib/systemd/system/guest-client.service
+            rm $DESTDIR/etc/systemd/system/guest-client.service
+
+        elif [ "$INIT_TYPE" = "sysv" ]
+        then
+            rm $DESTDIR/etc/init.d/guest-client
+
+        else
+            echo "Unknown init type given, INIT_TYPE=$INIT_TYPE"
+        fi
+
+        find ./rootdir -type l | while read source_file; do
+            target_file=${source_file#./rootdir/}
+            rm $DESTDIR/$target_file
+        done
+
+        find ./rootdir -type f | while read source_file; do
+            target_file=${source_file#./rootdir/}
+            rm $DESTDIR/$target_file
+        done
+        ;;
+
+    *)
+        echo "usage: $0 { install | uninstall }"
+        ;;
+esac
+
+exit ${RETVAL}
