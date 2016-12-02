@@ -169,6 +169,9 @@ static struct rte_pci_id pci_id_avp_map[] = {
       .device_id = WRS_AVP_PCI_DEVICE_ID,
       .subsystem_vendor_id = WRS_AVP_PCI_SUB_VENDOR_ID,
       .subsystem_device_id = WRS_AVP_PCI_SUB_DEVICE_ID,
+#if RTE_VERSION >= RTE_VERSION_NUM(16,07,0,0)
+      .class_id = RTE_CLASS_ANY_ID,
+#endif
     },
 
     { .vendor_id = 0, /* sentinel */
@@ -2140,7 +2143,11 @@ avp_dev_link_update(struct rte_eth_dev *eth_dev,
     struct avp_dev *avp = WRS_AVP_DEV_PRIVATE_TO_HW(eth_dev->data->dev_private);
     struct rte_eth_link *link = &eth_dev->data->dev_link;
 
+#if RTE_VERSION >= RTE_VERSION_NUM(16,04,0,0)
+    link->link_speed = ETH_SPEED_NUM_10G;
+#else
     link->link_speed = ETH_LINK_SPEED_10000;
+#endif
     link->link_duplex = ETH_LINK_FULL_DUPLEX;
     link->link_status = !!(avp->flags & WRS_AVP_F_LINKUP);
 
@@ -2268,5 +2275,9 @@ static struct rte_driver wrs_avp_driver = {
     .init = wrs_avp_pmd_init,
 };
 
+#if RTE_VERSION >= RTE_VERSION_NUM(16,07,0,0)
+PMD_REGISTER_DRIVER(wrs_avp_driver, wrs_avp);
+DRIVER_REGISTER_PCI_TABLE(wrs_avp, pci_id_avp_map);
+#else
 PMD_REGISTER_DRIVER(wrs_avp_driver);
 #endif
