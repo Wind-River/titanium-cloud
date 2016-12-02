@@ -139,8 +139,8 @@ static uint16_t avp_xmit_pkts(void *tx_queue,
                               struct rte_mbuf **tx_pkts,
                               uint16_t nb_pkts);
 
-static void avp_dev_rx_queue_release(__rte_unused void *rxq);
-static void avp_dev_tx_queue_release(__rte_unused void *txq);
+static void avp_dev_rx_queue_release(void *rxq);
+static void avp_dev_tx_queue_release(void *txq);
 
 static void avp_dev_stats_get(struct rte_eth_dev *dev, struct rte_eth_stats *stats);
 static void avp_dev_stats_reset(struct rte_eth_dev *dev);
@@ -198,16 +198,6 @@ static struct eth_dev_ops avp_eth_dev_ops = {
     .tx_queue_release      = avp_dev_tx_queue_release,
 };
 
-/* Defines the AVP ethernet device stats */
-struct avp_dev_stats {
-    uint64_t rx_packets;
-    uint64_t rx_bytes;
-    uint64_t tx_packets;
-    uint64_t tx_bytes;
-    uint64_t rx_errors;
-    uint64_t tx_errors;
-} __rte_cache_aligned;
-
 /**@{ AVP device flags */
 #define WRS_AVP_F_PROMISC    (1<<1)
 #define WRS_AVP_F_CONFIGURED (1<<2)
@@ -255,11 +245,6 @@ struct avp_dev {
     void * sync_addr; /**< Req/Resp Mem address */
     void * host_mbuf_addr; /**< (host) MBUF pool start address */
     void * mbuf_addr; /**< MBUF pool start address */
-
-#ifdef WRS_LIBWRS_AVP_STATS
-    struct avp_dev_stats stats[RTE_MAX_LCORE]; /**< Device statistics */
-#endif
-
 } __rte_cache_aligned;
 
 /* RTE ethernet private data */
@@ -269,16 +254,13 @@ struct avp_adapter {
 
 /**@{ AVP device statistics */
 #ifdef WRS_LIBWRS_AVP_STATS
-#define WRS_AVP_STATS_INC(avp, name) \
-    ((avp)->stats[rte_lcore_id()].name++)
-#define WRS_AVP_STATS_ADD(avp, name, value) \
-    ((avp)->stats[rte_lcore_id()].name += (value))
-#define WRS_AVP_STATS_SUB(avp, name, value) \
-    ((interface)->stats[rte_lcore_id()].name -= (value))
+#define WRS_AVP_STATS_INC(queue, name) \
+    ((queue)->name++)
+#define WRS_AVP_STATS_ADD(queue, name, value) \
+    ((queue)->name += (value))
 #else
-#define WRS_AVP_STATS_INC(avp, name)
-#define WRS_AVP_STATS_ADD(avp, name, value)
-#define WRS_AVP_STATS_SUB(avp, name, value)
+#define WRS_AVP_STATS_INC(queue, name)
+#define WRS_AVP_STATS_ADD(queue, name, value)
 #endif
 /**@} */
 
@@ -302,6 +284,13 @@ struct avp_queue {
     uint16_t queue_id; /**< Queue identifier used for indexing current queue */
     uint16_t queue_base; /**< Base queue identifier for queue servicing */
     uint16_t queue_limit; /**< Maximum queue identifier for queue servicing */
+
+#ifdef WRS_LIBWRS_AVP_STATS
+    uint64_t packets;
+    uint64_t bytes;
+    uint64_t errors;
+#endif
+
 };
 
 /* send a request and wait for a response
@@ -1524,10 +1513,10 @@ avp_recv_scattered_pkts(void *rx_queue,
 
         /* return new mbuf to caller */
         rx_pkts[count++] = m;
-        WRS_AVP_STATS_ADD(avp, rx_bytes, buf_len);
+        WRS_AVP_STATS_ADD(rxq, bytes, buf_len);
     }
 
-    WRS_AVP_STATS_ADD(avp, rx_packets, count);
+    WRS_AVP_STATS_ADD(rxq, packets, count);
 
     /* return the buffers to the free queue */
     avp_fifo_put(free_q, (void**)&avp_bufs[0], n);
@@ -1601,7 +1590,7 @@ avp_recv_pkts(void *rx_queue,
 
         if (unlikely((pkt_len > avp->guest_mbuf_size) || (pkt_buf->nb_segs > 1))) {
             /* application should be using the scattered receive function */
-            WRS_AVP_STATS_INC(avp, rx_errors);
+            WRS_AVP_STATS_INC(rxq, errors);
             continue;
         }
 
@@ -1634,10 +1623,10 @@ avp_recv_pkts(void *rx_queue,
 
         /* return new mbuf to caller */
         rx_pkts[count++] = m;
-        WRS_AVP_STATS_ADD(avp, rx_bytes, pkt_len);
+        WRS_AVP_STATS_ADD(rxq, bytes, pkt_len);
     }
 
-    WRS_AVP_STATS_ADD(avp, rx_packets, count);
+    WRS_AVP_STATS_ADD(rxq, packets, count);
 
     /* return the buffers to the free queue */
     avp_fifo_put(free_q, (void**)&avp_bufs[0], n);
@@ -1757,7 +1746,7 @@ avp_xmit_scattered_pkts(void *tx_queue, struct rte_mbuf **tx_pkts, uint16_t nb_p
     if (unlikely(avp->flags & WRS_AVP_F_DETACHED)) {
         /* VM live migration in progress */
         /* TODO ... buffer for X packets then drop?! */
-        WRS_AVP_STATS_ADD(avp, tx_errors, nb_pkts);
+        WRS_AVP_STATS_ADD(txq, errors, nb_pkts);
         return 0;
     }
 
@@ -1806,7 +1795,7 @@ avp_xmit_scattered_pkts(void *tx_queue, struct rte_mbuf **tx_pkts, uint16_t nb_p
 
     if (unlikely(nb_pkts == 0)) {
         /* no available buffers, or no space on the tx queue */
-        WRS_AVP_STATS_ADD(avp, tx_errors, orig_nb_pkts);
+        WRS_AVP_STATS_ADD(txq, errors, orig_nb_pkts);
         return 0;
     }
 
@@ -1818,7 +1807,7 @@ avp_xmit_scattered_pkts(void *tx_queue, struct rte_mbuf **tx_pkts, uint16_t nb_p
     if (unlikely(n != segments)) {
         PMD_TX_LOG(DEBUG, "Failed to allocate buffers n=%u, segments=%u, orig=%u\n",
                    n, segments, orig_nb_pkts);
-        WRS_AVP_STATS_ADD(avp, tx_errors, orig_nb_pkts);
+        WRS_AVP_STATS_ADD(txq, errors, orig_nb_pkts);
         return 0;
     }
 
@@ -1840,8 +1829,8 @@ avp_xmit_scattered_pkts(void *tx_queue, struct rte_mbuf **tx_pkts, uint16_t nb_p
         rte_pktmbuf_free(m);
     }
 
-    WRS_AVP_STATS_ADD(avp, tx_packets, nb_pkts);
-    WRS_AVP_STATS_ADD(avp, tx_bytes, tx_bytes);
+    WRS_AVP_STATS_ADD(txq, packets, nb_pkts);
+    WRS_AVP_STATS_ADD(txq, bytes, tx_bytes);
 
 #ifdef WRS_LIBWRS_AVP_DEBUG_BUFFERS
     for (i = 0; i < nb_pkts; i++) {
@@ -1853,7 +1842,7 @@ avp_xmit_scattered_pkts(void *tx_queue, struct rte_mbuf **tx_pkts, uint16_t nb_p
     n = avp_fifo_put(tx_q, (void**)&tx_bufs[0], nb_pkts);
     if (unlikely(n != orig_nb_pkts))
     {
-        WRS_AVP_STATS_ADD(avp, tx_errors, (orig_nb_pkts - n));
+        WRS_AVP_STATS_ADD(txq, errors, (orig_nb_pkts - n));
     }
 
     return n;
@@ -1879,7 +1868,7 @@ avp_xmit_pkts(void *tx_queue, struct rte_mbuf **tx_pkts, uint16_t nb_pkts)
     if (unlikely(avp->flags & WRS_AVP_F_DETACHED)) {
         /* VM live migration in progress */
         /* TODO ... buffer for X packets then drop?! */
-        WRS_AVP_STATS_INC(avp, tx_errors);
+        WRS_AVP_STATS_INC(txq, errors);
         return 0;
     }
 
@@ -1903,7 +1892,7 @@ avp_xmit_pkts(void *tx_queue, struct rte_mbuf **tx_pkts, uint16_t nb_pkts)
 
     if (unlikely(count == 0)) {
         /* no available buffers, or no space on the tx queue */
-        WRS_AVP_STATS_INC(avp, tx_errors);
+        WRS_AVP_STATS_INC(txq, errors);
         return 0;
     }
 
@@ -1913,7 +1902,7 @@ avp_xmit_pkts(void *tx_queue, struct rte_mbuf **tx_pkts, uint16_t nb_pkts)
     /* retrieve sufficient send buffers */
     n = avp_fifo_get(alloc_q, (void **)&avp_bufs, count);
     if (unlikely(n != count)) {
-        WRS_AVP_STATS_INC(avp, tx_errors);
+        WRS_AVP_STATS_INC(txq, errors);
         return 0;
     }
 
@@ -1944,7 +1933,7 @@ avp_xmit_pkts(void *tx_queue, struct rte_mbuf **tx_pkts, uint16_t nb_pkts)
              * set the max_rx_pkt_len based on its MTU and it should be
              * policing its own packet sizes.
              */
-            WRS_AVP_STATS_INC(avp, tx_errors);
+            WRS_AVP_STATS_INC(txq, errors);
             pkt_len = RTE_MIN(avp->guest_mbuf_size, avp->host_mbuf_size);
         }
 
@@ -1966,8 +1955,8 @@ avp_xmit_pkts(void *tx_queue, struct rte_mbuf **tx_pkts, uint16_t nb_pkts)
         rte_pktmbuf_free(m);
     }
 
-    WRS_AVP_STATS_ADD(avp, tx_packets, count);
-    WRS_AVP_STATS_ADD(avp, tx_bytes, tx_bytes);
+    WRS_AVP_STATS_ADD(txq, packets, count);
+    WRS_AVP_STATS_ADD(txq, bytes, tx_bytes);
 
     /* send the packets */
     n = avp_fifo_put(tx_q, (void**)&avp_bufs[0], count);
@@ -1976,15 +1965,31 @@ avp_xmit_pkts(void *tx_queue, struct rte_mbuf **tx_pkts, uint16_t nb_pkts)
 }
 
 static void
-avp_dev_rx_queue_release(__rte_unused void *rxq)
+avp_dev_rx_queue_release(void *rx_queue)
 {
-    /* Nothing to do since our mbufs never sit on any queues */
+    struct avp_queue *rxq = (struct avp_queue*)rx_queue;
+    struct avp_dev *avp = rxq->avp;
+    struct rte_eth_dev_data *data = avp->dev_data;
+    unsigned i;
+
+    for (i = 0; i < avp->num_rx_queues; i++) {
+        if (data->rx_queues[i] == rxq)
+            data->rx_queues[i] = NULL;
+    }
 }
 
 static void
-avp_dev_tx_queue_release(__rte_unused void *txq)
+avp_dev_tx_queue_release(void *tx_queue)
 {
-    /* Nothing to do since our mbufs never sit on any queues */
+    struct avp_queue *txq = (struct avp_queue*)tx_queue;
+    struct avp_dev *avp = txq->avp;
+    struct rte_eth_dev_data *data = avp->dev_data;
+    unsigned i;
+
+    for (i = 0; i < avp->num_tx_queues; i++) {
+        if (data->tx_queues[i] == txq)
+            data->tx_queues[i] = NULL;
+    }
 }
 
 static int
@@ -2140,7 +2145,7 @@ avp_dev_link_update(struct rte_eth_dev *eth_dev,
     struct avp_dev *avp = WRS_AVP_DEV_PRIVATE_TO_HW(eth_dev->data->dev_private);
     struct rte_eth_link *link = &eth_dev->data->dev_link;
 
-    link->link_speed = ETH_LINK_SPEED_10000;
+    link->link_speed = ETH_SPEED_NUM_10G;
     link->link_duplex = ETH_LINK_FULL_DUPLEX;
     link->link_status = !!(avp->flags & WRS_AVP_F_LINKUP);
 
@@ -2230,18 +2235,27 @@ avp_dev_stats_get(struct rte_eth_dev *eth_dev, struct rte_eth_stats *stats)
 {
 #ifdef WRS_LIBWRS_AVP_STATS
     struct avp_dev *avp = WRS_AVP_DEV_PRIVATE_TO_HW(eth_dev->data->dev_private);
-    struct avp_dev_stats *avpstats;
     unsigned i;
 
     memset(stats, 0, sizeof(*stats));
-    for (i = 0; i < RTE_MAX_LCORE; i++) {
-        avpstats = &avp->stats[i];
-        stats->ipackets += avpstats->rx_packets;
-        stats->ibytes += avpstats->rx_bytes;
-        stats->opackets += avpstats->tx_packets;
-        stats->obytes += avpstats->tx_bytes;
-        stats->oerrors += avpstats->tx_errors;
-        stats->ierrors += avpstats->rx_errors;
+    for (i = 0; i < avp->num_rx_queues; i++) {
+        struct avp_queue *rxq = avp->dev_data->rx_queues[i];
+
+        if (rxq) {
+            stats->ipackets += rxq->packets;
+            stats->ibytes += rxq->bytes;
+            stats->ierrors += rxq->errors;
+        }
+    }
+
+    for (i = 0; i < avp->num_tx_queues; i++) {
+        struct avp_queue *txq = avp->dev_data->tx_queues[i];
+
+        if (txq) {
+            stats->opackets += txq->packets;
+            stats->obytes += txq->bytes;
+            stats->oerrors += txq->errors;
+        }
     }
 #else
     (void)eth_dev;
@@ -2254,8 +2268,27 @@ avp_dev_stats_reset(struct rte_eth_dev *eth_dev)
 {
 #ifdef WRS_LIBWRS_AVP_STATS
     struct avp_dev *avp = WRS_AVP_DEV_PRIVATE_TO_HW(eth_dev->data->dev_private);
+    unsigned i;
 
-    memset(&avp->stats, 0, sizeof(avp->stats));
+    for (i = 0; i < avp->num_rx_queues; i++) {
+        struct avp_queue *rxq = avp->dev_data->rx_queues[i];
+
+        if (rxq) {
+            rxq->bytes = 0;
+            rxq->packets = 0;
+            rxq->errors = 0;
+        }
+    }
+
+    for (i = 0; i < avp->num_tx_queues; i++) {
+        struct avp_queue *txq = avp->dev_data->tx_queues[i];
+
+        if (txq) {
+            txq->bytes = 0;
+            txq->packets = 0;
+            txq->errors = 0;
+        }
+    }
 #else
     (void)eth_dev;
 #endif
