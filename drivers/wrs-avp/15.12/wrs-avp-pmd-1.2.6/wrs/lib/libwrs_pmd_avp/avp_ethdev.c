@@ -1793,7 +1793,7 @@ avp_xmit_scattered_pkts(void *tx_queue, struct rte_mbuf **tx_pkts, uint16_t nb_p
         WRS_AVP_STATS_ADD(avp, tx_errors, (orig_nb_pkts - n));
     }
 
-    return n;
+    return nb_pkts;
 }
 
 
@@ -1909,7 +1909,7 @@ avp_xmit_pkts(void *tx_queue, struct rte_mbuf **tx_pkts, uint16_t nb_pkts)
     /* send the packets */
     n = avp_fifo_put(tx_q, (void**)&avp_bufs[0], count);
 
-    return n;
+    return count;
 }
 
 static void
