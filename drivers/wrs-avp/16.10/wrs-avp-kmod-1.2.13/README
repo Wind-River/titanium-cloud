@@ -55,8 +55,8 @@ COMPILE
 Extract the tarball contents ...
 
    mkdir -p /tmp/wrs; cd /tmp/wrs
-   tar xvf wrs-avp-kmod-1.2.8.tgz
-   export WRS_SDK=${PWD}/wrs-avp-kmod-1.2.8
+   tar xvf wrs-avp-kmod-1.2.13.tgz
+   export WRS_SDK=${PWD}/wrs-avp-kmod-1.2.13
 
 To compile, change directories and run make.  This will produce 'wrs_avp.ko'.
 

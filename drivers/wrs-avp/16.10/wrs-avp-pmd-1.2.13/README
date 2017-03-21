@@ -1,7 +1,7 @@
 BSD LICENSE
 
 Copyright(c) 2010-2013 Intel Corporation. All rights reserved.
-Copyright(c) 2013-2015, Wind River Systems, Inc. All rights reserved.
+Copyright(c) 2013-2017, Wind River Systems, Inc. All rights reserved.
 All rights reserved.
  
 Redistribution and use in source and binary forms, with or without
@@ -43,7 +43,7 @@ component of an Intel DPDK distribution.
 REQUIREMENTS
 ============
     Compilation:
-        Intel DPDK == v1.5.x, v1.6.x, v1.7.x, v2.0.x
+        Intel DPDK == v2.0.x, v2.2.x, v16.04, v16.11
         64-bit Linux Kernel
            version >= 3.2
            loadable module support
@@ -63,42 +63,6 @@ required DPDK make and configuration files in a compressed tarball such that
 it can be compiled as a component of an Intel DPDK distribution.
 
 
-COMPILE (RTE_VERSION < 1.7.0)
-=======
-Extract the tarball contents and add to your DPDK distribution source tree.
-The following steps will modify the source tree and add a WRS specific layer
-to the build process.
-
-   |
-   +- DPDK      <--- this is ${RTE_SDK}
-       +- config
-       +- mk
-       +- lib
-       +- wrs   <--- this is new
-
-   ## 1. Extract
-   ##
-   export RTE_VERSION=1.5.0    # Can be 1.5.0 or 1.6.0
-   export RTE_SDK=/path/to/dpdk
-   export RTE_TARGET=<name of dpdk target>
-   mkdir -p /tmp/wrs; cd /tmp/wrs
-   tar -xvf wrs-avp-pmd-1.2.8.tgz
-   export WRS_SDK=${PWD}/wrs-avp-pmd-1.2.8
-
-   ## 2. Install the WRS PMD extension
-   ##
-   cp -r ${WRS_SDK}/wrs ${RTE_SDK}/
-   cd ${RTE_SDK}
-
-   ## 3. Apply patches to the DPDK to address compatibility issues with the
-   ##    WRS layer. 
-   find ${WRS_SDK}/patches-${RTE_VERSION} -name "*patch" | sort | xargs --replace=X sh -c 'patch -p1 < X'
-
-   ## 4.  To compile, follow the standard DPDK compile instructions.
-   ##
-   make -C ${RTE_SDK} T=${RTE_TARGET} install
-
-
 COMPILE (RTE_VERSION >= 1.7.x)
 =======
 Extract the tarball contents to a working directory.
@@ -113,8 +77,8 @@ Extract the tarball contents to a working directory.
    export RTE_SDK=/path/to/installed/dpdk
    export RTE_TARGET=<name of dpdk target>
    mkdir -p /tmp/wrs; cd /tmp/wrs
-   tar -xvf wrs-avp-pmd-1.2.8.tgz
-   export WRS_SDK=${PWD}/wrs-avp-pmd-1.2.8
+   tar -xvf wrs-avp-pmd-1.2.13.tgz
+   export WRS_SDK=${PWD}/wrs-avp-pmd-1.2.13
 
    ## 2. Compile
    ##
@@ -157,27 +121,6 @@ specific patch for the supported DPDK versions.
 ${WRS_SDK}/extras-1.5.0/0001-Removed-CPU-package-id-and-socket-id-assumption.patch
 
 
-APPLICATION INTEGRATION (RTE_VERSION < 1.7.0)
-=======================
-To integrate the WRS AVP PMD with your application you must update your
-application initialization code to initialize the AVP PMD library.  Adding the
-following code fragment to your initialization code with initialize the
-driver.  It must be inserted immediately following the call to
-rte_pmd_init_all() which should already be included.
-
-   #ifdef WRS_LIBWRS_AVP_PMD
-       /* include WRS AVP PMD driver header file */
-       #include <avp_ethdev.h>
-   #endif
-
-   ... ... 
-
-   #ifdef WRS_LIBWRS_AVP_PMD
-       if (wrs_avp_pmd_init())
-           rte_panic("Cannot init WRS AVP PMD\n");
-   #endif
-
-
 RUNTIME
 =======
 At present, the WRS AVP devices are displayed by the "lspci" utilities as
@@ -208,14 +151,9 @@ rebound to the igb_uio driver.
    echo -n "0000:00:07.0" > /sys/bus/pci/devices/0000:00:07.0/driver/unbind'
    echo -n "0000:00:07.0" > /sys/bus/pci/drivers/igb_uio/bind'
 
-Finally, the DPDK application can be launched normally if running DPDK version
-1.6.x or earlier.  For example,
-
-   testpmd -n 2 -c 0x7 -m 128 -- -i 
-
-But, if running DPDK version 1.7.x+ the AVP PMD shared library must be
-specified as an argument.  The location of the shared library must be in
-LD_LIBRARY_PATH or configured in the /etc/ld.conf configuration file. 
+Finally, the DPDK application can be launched by specifying the AVP PMD shared
+library as an argument.  The location of the shared library must be in
+LD_LIBRARY_PATH or configured in the /etc/ld.conf configuration file.
 
    testpmd -n 2 -c 0x7 -m 128 -d libwrs_pmd_avp.so -- -i 
 

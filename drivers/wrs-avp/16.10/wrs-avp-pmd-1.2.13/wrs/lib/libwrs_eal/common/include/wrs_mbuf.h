@@ -86,7 +86,11 @@ static inline int wrs_pktmbuf_alloc_bulk(struct rte_mempool *mp,
         for (i = 0; i < n; i++)
         {
             m = mbufs[i];
+#if RTE_VERSION >= RTE_VERSION_NUM(16, 7, 0, 0)
+			RTE_ASSERT(rte_mbuf_refcnt_read(m) == 0);
+#else
             RTE_MBUF_ASSERT(rte_mbuf_refcnt_read(m) == 0);
+#endif
             rte_mbuf_refcnt_set(m, 1);
             rte_pktmbuf_reset(m);
         }
@@ -146,7 +150,11 @@ static inline void wrs_pktmbuf_free_bulk(struct rte_mbuf **mbufs, unsigned n)
             break; /* abort bulk operation */
         }
 
+#if RTE_VERSION >= RTE_VERSION_NUM(16, 7, 0, 0)
+		RTE_ASSERT(rte_mbuf_refcnt_read(m) == 0);
+#else
         RTE_MBUF_ASSERT(rte_mbuf_refcnt_read(m) == 0);
+#endif
     }
 
     if (likely(mp != NULL)) {
