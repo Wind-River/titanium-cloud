@@ -1,0 +1,291 @@
+Copyright(c) 2013-2017, Wind River Systems, Inc. 
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions
+are met:
+
+  * Redistributions of source code must retain the above copyright
+    notice, this list of conditions and the following disclaimer.
+  * Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions and the following disclaimer in
+    the documentation and/or other materials provided with the
+    distribution.
+  * Neither the name of Wind River Systems nor the names of its
+    contributors may be used to endorse or promote products derived
+    from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+-----------------------------------------------------------------------
+
+This file contains instructions for building and installing the Titanium Cloud
+Guest-Client.
+
+
+REQUIREMENTS
+============
+    The Guest-Client uses the SIGIO functionality of the virtio-serial device
+    to track host connection up, down and port unplug events.  This functionality
+    requires a kernel version equal to or greater than 2.6.37.
+
+    Compilation:
+        Linux OS        ## Same architecture as the VM.
+
+        gnu make
+        gcc compiler
+
+        development libraries and headers for:
+           libc         ## C library
+           rt           ## Real-Time library
+           json-c       ## JSON-C library
+
+    VM Runtime:
+        Linux OS
+
+        runtime libraries:
+           libc         ## C library
+           rt           ## Real-Time  library
+           json-c       ## JSON-C library
+
+
+COMPILE
+=======
+    Extract the tarball contents ...
+
+        tar -xvf wrs-guest-heartbeat-v3.0.0.tgz
+
+    To compile, simply run ...
+
+        cd wrs-guest-heartbeat-3.0.0
+        make
+
+        This will create a build output directory called "build" in the
+        wrs-guest-heartbeat-3.0.0 directory.  The build output directory
+        contains the following relevant files:
+
+            libguest_common_api.so.3.0.0
+            libguest_heartbeat_api.so.3.0.0
+            guest-client
+
+            The libguest_common_api library contains all the common code for
+            the Guest-Client API libraries.
+
+            The libguest_heartbeat_api library contains the heartbeat, voting,
+            and notification functionality to interact with the Guest-Client.
+            A guest application wanting to use this functionality needs to link
+            in the libguest_common_api and libguest_heartbeat_api libraries.
+
+            The guest-client executable is the Guest-Client daemon that heartbeats
+            guest applications, and orchestrates votes on and notifications of
+            pending actions against the VM.  The Guest-Client reports the health,
+            notification and voting results of guest application(s) to the
+            Titanium Cloud.
+
+        The following variables are available to change the build output
+        directory and where the system configuration files will be located:
+
+            BUILD_DIR   - used to change the build output directory, defaults
+                          to the wrs-guest-heartbeat-3.0.0/build directory.
+
+            prefix      - used to construct other variables below, defaults to
+                          the /usr/local directory.
+
+            sysconfdir  - directory for configuration files, set to
+                          $(prefix)/etc
+
+            Note: all directory variables must specify an absolute path.
+
+            Usage: make <variable-name>=<variable-value>
+
+    To compile the sample-guest-app, simply run ...
+
+        cd wrs-guest-heartbeat-3.0.0
+        make sample
+
+        The sample-guest-app executable is for demonstration purposes only.
+        It demonstrates how a guest application can use the guest heartbeat
+        library, libguest_heartbeat_api, to interact with the Guest-Client.
+
+    To compile with a different compiler, simply run ...
+
+        cd wrs-guest-heartbeat-3.0.0
+        make CC=/x86_64/buildroot/host/usr/bin/x86_64-buildroot-linux-uclibc-cc
+
+
+PACKAGE
+=======
+    To build a tar package for installation, simply run ...
+
+        cd wrs-guest-heartbeat-3.0.0
+        make package
+
+        This will create a tar file called wrs-guest-heartbeat-3.0.0_pkg.tgz
+        in the wrs-guest-heartbeat-3.0.0 build directory.
+
+        If you changed the build output directory during compile, the BUILD_DIR
+        variable will have to be specified on the make package.  Also if you
+        specified a different system configuration directory, the sysconfdir
+        variable, during compile, it will also have to be specified on the
+        make package.
+
+        The following package configuration variables are available to customize
+        the package for installation:
+
+            prefix      - used to construct other variables below, defaults to
+                          the /usr/local directory.
+
+            exec_prefix - used to construct other executable variables, set to
+                          the 'prefix' variable.
+
+            sysconfdir  - directory for configuration files, set to
+                          $(prefix)/etc
+
+            includedir  - directory for installing header files, set to
+                          $(prefix)/include
+
+            libdir      - directory for installing libraries, set to
+                          $(exec_prefix)/lib
+
+            bindir      - directory for installing executable programs, set to
+                          $(exec_prefix)/bin
+
+            Note: all directory variables must specify an absolute path.
+
+            Usage: make package <variable-name>=<variable-value> ...
+
+
+INSTALL
+=======
+    To install from source directories, simply run ...
+
+        cd wrs-guest-heartbeat-3.0.0
+        make install
+
+        This will install the default configuration file, include files,
+        compiled libraries and executable into the following directories:
+
+            guest_heartbeat.conf            --> /usr/local/etc/guest-client/heartbeat
+            guest_api_types.h               --> /usr/local/include
+            guest_heartbeat_api.h           --> /usr/local/include
+            libguest_common_api.so.3.0.0    --> /usr/local/lib
+            libguest_heartbeat_api.so.3.0.0 --> /usr/local/lib
+            guest-client                    --> /usr/local/bin
+
+        If you changed the build output directory during compile, the BUILD_DIR
+        variable will have to be specified on the make install.  Also if you
+        specified a different system configuration directory, the sysconfdir
+        variable, during compile, it will also have to be specified on the
+        make install.
+
+        The following install configuration variables are available to customize
+        installation:
+
+            INIT_TYPE   - the type of initialization the OS is using, one of
+                          ( systemd or sysv ).  Default to sysv.
+
+            DESTDIR     - prepended to each install target file, used to provide
+                          an alternate environment to install in (i.e. support
+                          for staged installs).
+
+            prefix      - used to construct other variables below, defaults to
+                          the /usr/local directory.
+
+            exec_prefix - used to construct other executable variables, set to
+                          the 'prefix' variable.
+
+            sysconfdir  - directory for configuration files, set to
+                          $(prefix)/etc
+
+            includedir  - directory for installing header files, set to
+                          $(prefix)/include
+
+            libdir      - directory for installing libraries, set to
+                          $(exec_prefix)/lib
+
+            bindir      - directory for installing executable programs, set to
+                          $(exec_prefix)/bin
+
+            Note: all directory variables must specify an absolute path.
+
+            Usage: make <install | uninstall> <variable-name>=<variable-value> ...
+
+
+
+    To install from a tar package file, simply run ...
+
+        tar -xvf wrs-guest-heartbeat-v3.0.0_pkg.tgz
+
+        cd wrs-guest-heartbeat-v3.0.0_pkg
+        guest-client.pkg install
+
+        This will install the default configuration file, include files,
+        compiled libraries and executable into the following directories:
+
+            guest_heartbeat.conf            --> /usr/local/etc/guest-client/heartbeat
+            guest_api_types.h               --> /usr/local/include
+            guest_heartbeat_api.h           --> /usr/local/include
+            libguest_common_api.so.3.0.0    --> /usr/local/lib
+            libguest_heartbeat_api.so.3.0.0 --> /usr/local/lib
+            guest-client                    --> /usr/local/bin
+
+        To uninstall: guest-client.pkg uninstall
+
+        The following install configuration variables can be provided to
+        customize installation:
+
+            INIT_TYPE   - the type of initialization the OS is using, one of
+                          ( systemd, sysv ).  Optional parameter, defaults to
+                           sysv.
+
+            DESTDIR     - prepended to each install target file, used to provide
+                          an alternate environment to install in (i.e. support
+                          for staged installs).  Optional parameter.
+
+            Note: all directory variables must specify an absolute path.
+
+            guest-client.pkg <install | uninstall> <systemd | sysv> [DESTDIR]
+
+
+POST-INSTALL
+============
+    Running in the VM:
+
+        Test if your platform is using systemd.  First look for the systemd
+        process and then verify that the systemctl tool is available
+
+            ps -ef | grep systemd
+            systemctl --version
+
+        In this case use the systemd instructions, otherwise the sysv
+        instructions.
+
+        systemd:
+            As the root user,
+                systemctl daemon-reload
+                systemctl start guest-client.service
+                systemctl enable guest-client.service
+
+        sysv:
+            As the root user,
+                chkconfig --add guest-client
+                /etc/init.d/guest-client start
+
+    Building into the VM Image:
+
+        systemd:
+            No post install steps required.
+
+        sysv:
+            ln -s /etc/init.d/guest-client /etc/rc#.d/K##guest-client
+            ln -s /etc/init.d/guest-client /etc/rc#.d/S##guest-client
+
+        ... and build the VM image.

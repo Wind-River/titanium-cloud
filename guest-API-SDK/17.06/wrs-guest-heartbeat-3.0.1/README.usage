@@ -1,0 +1,385 @@
+Copyright(c) 2013-2017, Wind River Systems, Inc. 
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions
+are met:
+
+  * Redistributions of source code must retain the above copyright
+    notice, this list of conditions and the following disclaimer.
+  * Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions and the following disclaimer in
+    the documentation and/or other materials provided with the
+    distribution.
+  * Neither the name of Wind River Systems nor the names of its
+    contributors may be used to endorse or promote products derived
+    from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+-----------------------------------------------------------------------
+
+This file contains instructions for using the Titanium Cloud Guest-Client.
+
+
+Titanium Cloud Setup
+=====================
+    The following steps are required to setup the Titanium Cloud to heartbeat
+    a VM.
+
+        1. Create and modify a Flavor for your VM.
+
+            A flavor extraspec, 'Guest Heartbeat', is used to indicate
+            that VMs of this flavor support Titanium Cloud Guest Heartbeat.
+            The default value is 'False'.
+
+            If support is indicated, then as soon as the VM's Titanium Cloud
+            Guest-Client daemon registers with the Titanium Cloud Compute
+            Services on the compute node host, heartbeating will be enabled.
+
+            a) Create a new flavor:
+
+                via dashboard ...
+                    - Select 'Admin->Flavors' to bring up the list of flavors
+                    - Select '+ Create Flavor' in the upper right.
+                    - Fill in the fields as desired
+                    - Select 'Create Flavor'
+
+                via command line ...
+                      - nova flavor-create ...
+
+            b) Modify the newly created flavor or an existing flavor:
+
+                via dashboard ...
+                    - Select 'Admin->Flavors' to bring up the list of flavors
+                    - Choose a flavor to modify.
+                    - Select the <flavor-name> to go to the Flavor Detail page
+                    - Select the Extra Specs TAB
+                    - Select '+ Create'
+                    - Select 'Guest Heartbeat' from pull-down Extra Spec menu
+                    - Check the 'Guest Heartbeat' checkbox
+                    - Select 'Create'
+
+                via command line ...
+                    - nova flavor-key <flavor-name> set sw:wrs:guest:heartbeat=True
+
+                Note: already running instances that were launched with this
+                      flavor are NOT affected.
+
+        2) Launch a new instance of your VM.
+
+        3) Verify your VM is running with Guest Heartbeat enabled.
+
+            Log into the VM.
+
+            Guest-Client logs are written to syslog's 'daemon' facility, which
+            are typically logged by the syslog service to /var/log/daemon.log.
+            Please refer to syslog for details on log settings in order to
+            determine location of logged Guest-Client messages.
+
+            Guest-Client logs are easy to identify.  The logs always contain the
+            string 'Guest-Client'.  A recursive grep of /var/log is one way to
+            determine where your syslog is sending the Guest-Client logs.
+
+            LOG=`grep -r -l 'Guest-Client' /var/log`
+            echo $LOG
+
+            /var/log/daemon.log
+
+            A successful connection can be verified by looking for the
+            following log.
+
+            grep "Guest-Client" $USER_LOG | grep "heartbeat state change"
+
+            Guest-Client heartbeat state change from enabling to enabled
+
+
+VM Setup
+========
+    Configuring Guest-Client Initialization/Start Scripts
+    -----------------------------------------------------
+    The Titanium Cloud communicates with the Guest-Client through a character
+    device.  The packaged initialization/startup scripts need to be updated to
+    specify the character device exposed by QEMU to the VM.
+
+                                                     +-- Virtual Machine ---+
+                                                     |                      |
+                                                     |                      |
+     Titanium Cloud <-------------------> QEMU <------------> Guest-Client  |
+                       unix-stream-socket        char-device                |
+                                                     |                      |
+                                                     +----------------------+
+
+    The variable that needs updating in the initialization/start scripts is
+    called GUEST_CLIENT_DEVICE.
+
+    Also the location of the Guest-Client binary needs to be updated in the
+    initialization/start scripts.  The variable that needs updating is called
+    GUEST_CLIENT.
+
+
+    Configuring Guest Heartbeat & Application Health Check
+    ------------------------------------------------------
+    The Guest-Client within your VM will register with the Titanium Cloud
+    Compute Services on the compute node host.  Part of that registration
+    process is the specification of a heartbeat interval and a corrective
+    action for a failed/unhealthy VM.  The values of heartbeat interval and
+    corrective action come from the guest_heartbeat.conf file and is located
+    in /etc/guest-client/heartbeat directory by default.
+
+    Guest heartbeat works on a challenge response model.  The Titanium
+    Server Compute Services on the compute node host will challenge the
+    Guest-Client daemon with a message each interval.  The Guest-Client
+    must respond prior to the next interval with a message indicating good
+    health.  If the Titanium Cloud Compute Services does not receive a valid
+    response, or if the response specifies that the VM is in ill health, then
+    corrective action is taken.
+
+    The mechanism can be extended by allowing additional VM resident application
+    specific scripts and processes, to register for heartbeating.  Each script
+    or process can specify its own heartbeat interval, and its own corrective
+    action to be taken against the VM as a whole.  On ill health the Guest-Client
+    reports ill health to the Titanium Cloud Compute Services on the compute node
+    host on the next challenge, and provoke the corrective action.
+
+    This mechanism allows for detection of a failed or hung QEMU/KVM instance,
+    or a failure of the OS within the VM to schedule the Guest-Client process
+    or to route basic IO, or an application level error/failure.
+
+    Configuring the Guest-Client Heartbeat & Application Health Check ...
+
+        The heartbeat interval defaults to every second and can be overridden
+        by the VM in the guest_heartbeat.conf.
+
+        /etc/guest-client/heartbeat/guest_heartbeat.conf:
+            ## This specifies the interval between heartbeats in milliseconds between the
+            ## guest-client heartbeat and the Titanium Cloud Compute Services on the
+            ## compute node host.
+            HB_INTERVAL=1000
+
+        The corrective action defaults to 'reboot' and can be overridden by the
+        VM in the guest_heartbeat.conf.
+
+        /etc/guest-client/heartbeat/guest_heartbeat.conf:
+            ## This specifies the corrective action against the VM in the case of a
+            ## heartbeat failure between the guest-client and Titanium Cloud Compute
+            ## Services on the compute node host and also when the health script
+            ## configured below fails.
+            ##
+            ## Your options are:
+            ##   "log"     Only a log is issued.
+            ##   "reboot"  Issue a reboot against this VM.
+            ##   "stop"    Issue a stop against this VM.
+            ##
+            CORRECTIVE_ACTION="reboot"
+
+        A health check script can be registered to run periodically to verify
+        the health of the VM.  This is specified in the guest_heartbeat.conf.
+
+        /etc/guest-client/heartbeat/guest_heartbeat.conf:
+            ## The Path to the health check script. This is optional.
+            ## The script will be called periodically to check for the health of the VM.
+            ## The health check interval is specified in seconds.
+            HEALTH_CHECK_INTERVAL=30
+            HEALTH_CHECK_SCRIPT="/etc/guest-client/heartbeat/sample_health_check_script"
+
+
+    Configuring Guest Notifications and Voting
+    ------------------------------------------
+    The Guest-Client running in the VM can be used as a conduit for
+    notifications of VM lifecycle events being taken by the Titanium Cloud that
+    will impact this VM.  Reboots, pause/resume and migrations are examples of
+    the types of events your VM can be notified of.  Depending on the event, a
+    vote on the event maybe required before a notification is sent.  Notifications
+    may precede the event, follow it or both.  The full table of events and
+    notifications is found below.
+
+    Titanium Action  Event Name         Vote*  Pre-notification  Post-notification  Timeout
+    ---------------  -----------------  ----   ----------------  -----------------  -------
+    stop             stop                yes    yes                no               shutdown
+    reboot           reboot              yes    yes                no               shutdown
+    pause            pause               yes    yes                no               suspend
+    unpause          unpause              no     no               yes               resume
+    suspend          suspend             yes    yes                no               suspend
+    resume           resume               no     no               yes               resume
+    resize           resize_begin        yes    yes                no               suspend
+                     resize_end           no     no               yes               resume
+    live-migrate     live_migrate_begin  yes    yes                no               suspend
+                     live_migrate_end     no     no               yes               resume
+    cold-migrate     cold_migrate_begin  yes    yes                no               suspend
+                     cold_migrate_end     no     no               yes               resume**
+
+         * voting has its own timeout called 'vote' that is event independent.
+        ** after VM reboot and reconnection which is subject to the 'restart' timeout.
+
+    Notifications are an opportunity for the VM to take preparatory actions
+    in anticipation of the forthcoming event, or recovery actions after
+    the event has completed.  A few examples
+        - A reboot or stop notification might allow the application to stop
+          accepting transactions and cleanly wrap up existing transactions.
+        - A 'resume' notification after a suspend might trigger a time
+          adjustment.
+        - Pre and post migrate notifications might trigger the application
+          to de-register and then re-register with a network load balancer.
+
+    If you register a notification handler, it will receive all events.  If
+    an event is not of interest, it should return immediately with a
+    successful return code.
+
+    A process may only register a single notification handler.  However
+    multiple processes may independently register handlers.  Also a script
+    based handler may be registered via the guest_heartbeat.conf.  When
+    multiple processes and scripts register notification handlers, they
+    will be run in parallel.
+
+    Notifications are subject to configurable timeouts.  Timeouts are
+    specified by each registered process and in the guest_heartbeat.conf.
+    The timeouts in the guest_heartbeat.conf govern the maximum time all
+    registered notification handlers have to complete.
+
+    While pre-notification handlers are running, the event will be delayed.
+    If the timeout is reached, the event will be allowed to proceed.
+
+    While post-notification handlers are running, or waiting to be run,
+    the Titanium Cloud will not be able to declare the action complete.
+    Keep in mind that many events that offer a post notification will
+    require the VM's Guest-Client to reconnect to the compute host, and
+    that may be further delayed while the VM is rebooted as in a cold
+    migration.  When post-notification is finally triggered, it is subject
+    to a timeout as well.  If the timeout is reached, the event will be
+    declared complete.
+
+    NOTE: A post-event notification that follows a reboot, as in the
+    cold_migrate_end event, is a special case.  It will be triggered as
+    soon as the local heartbeat server reconnects with the compute host,
+    and likely before any processes have a chance to register a handler.
+    The only handler guaranteed to see such a notification is a script
+    directly registered by the Guest-Client itself via guest_heartbeat.conf.
+
+
+    In addition to notifications, there is also an opportunity for the VM
+    to vote on any proposed event.  Voting precedes all notifications,
+    and offers the VM a chance to reject the event the Titanium Cloud wishes
+    to initiate.  If multiple handlers are registered, it only takes one
+    rejection to abort the event.
+
+    The same handler that handles notifications also handles voting.
+
+    Voting is subject to a configurable timeout.  The same timeout applies
+    regardless of the event.  The timeout is specified when the Guest-Client
+    registers with compute services on the host.  The timeout is specified in
+    the guest_heartbeat.conf file.  This timeout governs the maximum time all
+    registered voting handlers have to complete the vote.
+
+    Any voters that fail to vote within the timeout are assumed to have agreed
+    with the proposed action.
+
+    Rejecting an event should be the exception, not the rule, reserved for
+    cases when the VM is handling an exceptionally sensitive operation,
+    as well as a slow operation that can't complete in the notification timeout.
+    An example
+        - an active-standby application deployment (1:1), where the active
+          rejects a shutdown or pause or ... due to its peer standby is not
+          ready or synchronized.
+
+    A vote handler should generally not take any action beyond returning its
+    vote.  Just because you vote to accept, doesn't mean all your peers
+    will also accept (i.e. the event might not happen).  Taking an action
+    against an event that never happens is almost certainly NOT what you want.
+    Instead save your actions for the notification that follows if no one
+    rejects.  The one exception might be to temporarily block the initiation of
+    any new task that would cause you to vote to reject an event in the near
+    future.  The theory being that the requester of the event may retry in
+    the near future.
+
+    The Titanium Cloud is not required to offer a vote.  Voting may be
+    bypassed on certain recovery scenarios.
+
+    Configuring Guest-Client Notification and Voting ...
+
+        ## The overall time to vote in seconds regardless of the event being voted
+        ## upon.  It should reflect the slowest of all expected voters when in a sane
+        ## and healthy condition, plus some allowance for scheduling and messaging.
+        VOTE=8
+
+        ## The overall time to handle a stop or reboot notification in seconds.
+        ## It should reflect the slowest of all expected notification handlers
+        ## when in a sane and healthy condition, plus some allowance for scheduling
+        ## and messaging.
+        SHUTDOWN_NOTICE=8
+
+        ## The overall time to handle a pause, suspend or migrate-begin notification
+        ## in seconds.  It should reflect the slowest of all expected notification
+        ## handlers when in a sane and healthy condition, plus some allowance for
+        ## scheduling and messaging.
+        SUSPEND_NOTICE=8
+
+        ## The overall time to handle an unpause, resume or migrate-end notification
+        ## in seconds.  It should reflect the slowest of all expected notification
+        ## handlers when in a sane and healthy condition, plus some allowance for
+        ## scheduling and messaging.  It does not include reboot time.
+        RESUME_NOTICE=13
+
+        ## The overall time to reboot, up to the point the guest-client heartbeat
+        ## starts in seconds.  Allow for some I/O contention.
+        RESTART=300
+
+        ## The Path to the event notification script. This is optional.
+        ## The script will be called when an action is initiated that will impact
+        ## the VM.
+        ##
+        ## The event handling script is invoked with two parameters:
+        ##
+        ##   event_handling_script <MSG_TYPE> <EVENT>
+        ##
+        ##     MSG_TYPE is one of:
+        ##       'revocable'    Indicating a vote is called for.  Return zero to accept,
+        ##                      non-zero to reject.  For a rejection, the first line of
+        ##                      stdout emitted by the script will be captured and logged
+        ##                      logged indicating why the event was rejected.
+        ##
+        ##       'irrevocable'  Indicating this is a notification only. Take preparatory
+        ##                      actions and return zero if successful, or non-zero on
+        ##                      failure.  For a failure, the first line of stdout
+        ##                      emitted by the script will be captured and logged
+        ##                      indicating the cause of the failure.
+        ##
+        ##     EVENT is one of: ( 'stop',  'reboot',  'pause', 'unpause', 'suspend',
+        ##                        'resume', 'live_migrate_begin',
+        ##                        'live_migrate_end', 'cold_migrate_begin',
+        ##                        'cold_migrate_end' )
+        ##
+        EVENT_NOTIFICATION_SCRIPT="/etc/guest-client/heartbeat/sample_event_handling_script"
+
+
+VM Application Setup
+====================
+    An application running in the VM may wish to register directly for voting
+    and notifications.  See the guest_heartbeat_api.h for more details.  A
+    working example can be found in the guest_client_api source directory in the
+    sample_guest_app.c file.
+
+    To compile the sample-guest-app run ...
+        cd wrs-guest-heartbeat-3.0.0
+        make sample
+
+        This will create an executable called sample-guest-app in the 'build'
+        directory.
+
+    When compiling the guest application ...
+
+        include headers:
+            #include <guest_api_types.h>
+            #include <guest_ap_debug.h>
+            #include <guest_heartbeat_api.h>
+
+        link with:
+            -lguest_common_api -lguest_heartbeat_api

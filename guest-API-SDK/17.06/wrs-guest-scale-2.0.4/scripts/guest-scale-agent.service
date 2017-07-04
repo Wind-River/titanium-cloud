@@ -1,0 +1,12 @@
+[Unit]
+Description=Guest Scale Agent
+After=cloud-init.service
+
+[Service]
+ExecStart=/usr/sbin/guest_scale_agent
+Type=simple
+Restart=always
+RestartSec=0
+
+[Install]
+WantedBy=multi-user.target

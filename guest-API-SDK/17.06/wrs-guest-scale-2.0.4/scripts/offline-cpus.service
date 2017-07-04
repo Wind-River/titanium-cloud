@@ -1,0 +1,12 @@
+[Unit]
+Description=Titanium Cloud agent and helper app to scale VMs up/down
+After=cloud-init.service
+
+[Service]
+Type=simple
+RemainAfterExit=yes
+ExecStart=/etc/init.d/offline_cpus start
+ExecStop=/etc/init.d/offline_cpus stop
+
+[Install]
+WantedBy=multi-user.target
